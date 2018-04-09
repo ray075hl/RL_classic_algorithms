@@ -1,2 +1,2 @@
 # RL_classic_algorithms
-reinforcement learning
+I will write several classic reinforcement learning algorithms in this project.  
