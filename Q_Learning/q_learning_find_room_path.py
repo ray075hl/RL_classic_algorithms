@@ -16,12 +16,12 @@ if __name__ == '__main__':
     decay_factor = 0.999
 
     episode = 1000
-    for i in range(episode):    # 设置为100次尝试
-        state = np.random.randint(0, 6)   # 每次尝试的起点为 state 0
+    for i in range(episode):    
+        state = np.random.randint(0, 6)   # random choose start state 
         done = False
         eps *= decay_factor
         while not done:
-            # 判断在此状态下  有几个可以选择的动作
+            # list possible new state at current state
             possible_state = [i for i, v in enumerate(R[state, :]) if v != -1]
 
             if np.random.random() < eps:                    # exploration
