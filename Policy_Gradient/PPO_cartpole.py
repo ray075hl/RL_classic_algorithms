@@ -1,6 +1,7 @@
 import gym
 import random
 import math
+import time
 
 import numpy as np
 
@@ -71,17 +72,16 @@ num_outputs = envs.action_space.n
 #Hyper params:
 hidden_size      = 64
 lr               = 1e-3
-num_steps        = 4
+num_steps        = 10
 mini_batch_size  = 5
-ppo_epochs       = 4
-threshold_reward = 195
+ppo_epochs       = 8
+threshold_reward = 195.0
 
 model = ActorCritic(num_inputs, num_outputs, hidden_size).to(device)
 optimizer = optim.Adam(model.parameters(), lr=lr)
 
 
-
-max_frames = 15000
+max_frames = 1500000
 frame_idx  = 0
 test_rewards = []
 
@@ -103,8 +103,9 @@ def ppo_update(ppo_epochs, mini_batch_size, states, actions, log_probs, returns,
         for state, action, old_log_probs, return_, advantage in ppo_iter(mini_batch_size, states, actions, log_probs,
                                                                          returns, advantages):
             dist, value = model(state)
-            log_prob_ = F.log_softmax(dist, dim=1)
-            entropy = (dist*log_prob_).sum().mean()
+            prob = F.softmax(dist, dim=-1)
+            log_prob_ = F.log_softmax(dist, dim=-1)
+            entropy = (prob*(-1.0*log_prob_)).sum()
             new_log_probs = F.log_softmax(dist, dim=1) #dist.log_prob(action)
 
 
@@ -112,10 +113,10 @@ def ppo_update(ppo_epochs, mini_batch_size, states, actions, log_probs, returns,
             surr1 = ratio * advantage
             surr2 = torch.clamp(ratio, 1.0 - clip_param, 1.0 + clip_param) * advantage
 
-            actor_loss = - torch.min(surr1, surr2).mean()
+            actor_loss =  -torch.min(surr1, surr2).mean()
             critic_loss = (return_ - value).pow(2).mean()
-
-            loss = critic_loss + actor_loss + 0.01 * entropy
+            #print('critic_loss: {}, actor_loss: {}, entropy_loss: {}'.format(critic_loss, actor_loss, entropy))
+            loss = 0.5*critic_loss + actor_loss - 0.001 * entropy
 
             optimizer.zero_grad()
             loss.backward()
@@ -135,9 +136,12 @@ def test_env(vis=False):
         action = np.random.choice(2, p=dist.cpu().detach().numpy())
         next_state, reward, done, _ = env.step(action)
         state = next_state
-        if vis: env.render()
+        if vis:
+            env.render()
+            time.sleep(0.1)
         total_reward += reward
     return total_reward
+
 
 test_rewards_list = []
 while frame_idx < max_frames and not early_stop:
@@ -164,7 +168,7 @@ while frame_idx < max_frames and not early_stop:
         # print(action_list)
         next_state, reward, done, _ = envs.step(action_list)
 
-        log_prob = F.log_softmax(logits)
+        log_prob = F.log_softmax(logits, dim=-1)
 
         log_probs.append(log_prob)
         values.append(value)
@@ -178,12 +182,13 @@ while frame_idx < max_frames and not early_stop:
         state = next_state  # -----------------
         frame_idx += 1
 
-    if frame_idx % 200 == 0:
+    if frame_idx % 100 == 0:
         test_rewards = test_env()
         #print(test_rewards)
         test_rewards_list.append(test_rewards)
-        print(sum(test_rewards_list[-20:])/20)
-    if sum(test_rewards_list[-20:])/20 > 190:
+        print(sum(test_rewards_list[-50:])/50)
+    if 1.0*sum(test_rewards_list[-50:])/50 > 195.0:
+        print('solved')
         break
 
     next_state = torch.FloatTensor(next_state).to(device)
@@ -201,5 +206,6 @@ while frame_idx < max_frames and not early_stop:
                actions, log_probs, returns, advantage)
 
 
-last_reawards = test_env(vis=True)
-print('xx: ', last_reawards)
+last_rewards = test_env(vis=True)
+print('final reward: ', last_rewards)
+env.close()
